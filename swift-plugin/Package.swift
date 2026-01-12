@@ -10,10 +10,10 @@ let package = Package(
         .macOS(.v13) // 最低支持 macOS 13.0 (Ventura)
     ],
     products: [
-        // 动态库，供 Rust 通过 FFI 调用
+        // 静态库，供 Rust 通过 FFI 调用
         .library(
             name: "AudioCapture",
-            type: .dynamic,
+            type: .static,
             targets: ["AudioCapture"]
         ),
     ],
@@ -22,8 +22,11 @@ let package = Package(
             name: "AudioCapture",
             dependencies: [],
             path: "Sources/AudioCapture",
-            swiftSettings: [
-                .unsafeFlags(["-emit-module", "-emit-library"])
+            linkerSettings: [
+                .linkedFramework("ScreenCaptureKit"),
+                .linkedFramework("Speech"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreMedia"),
             ]
         ),
     ]

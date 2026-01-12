@@ -2,23 +2,19 @@
 // Tauri 应用主入口
 // Mac Voice to Text - 实时语音转文字应用
 
-// 由于 Swift 库需要在运行时加载，使用条件编译
-// 在开发阶段，我们使用模拟模式，直到 Swift 库编译就绪
-
+mod audio_bridge;
 mod storage;
 
+use audio_bridge::AudioBridge;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use storage::{StorageManager, TranscriptRecord};
-use tauri::{AppHandle, Manager, State};
+use tauri::{Manager, State};
 
 /// 应用状态
 struct AppState {
     storage: Mutex<Option<StorageManager>>,
     current_language: Mutex<String>,
-    is_capturing: Mutex<bool>,
-    transcription_buffer: Mutex<String>,
-    latest_transcription: Mutex<String>,
     capture_start_time: Mutex<Option<std::time::Instant>>,
 }
 
@@ -27,9 +23,6 @@ impl Default for AppState {
         Self {
             storage: Mutex::new(None),
             current_language: Mutex::new("zh-CN".to_string()),
-            is_capturing: Mutex::new(false),
-            transcription_buffer: Mutex::new(String::new()),
-            latest_transcription: Mutex::new(String::new()),
             capture_start_time: Mutex::new(None),
         }
     }
@@ -56,13 +49,13 @@ struct TranscriptionStatus {
 /// 检查权限状态
 #[tauri::command]
 async fn check_permissions() -> Result<PermissionStatus, String> {
-    // TODO: 在 Swift 库就绪后，调用实际的权限检查
-    // 目前返回模拟值，提示用户需要手动授权
     log::info!("检查权限状态");
     
+    let (audio_ok, speech_ok) = AudioBridge::check_permissions();
+    
     Ok(PermissionStatus {
-        audio_capture: false,  // 在 Swift 库就绪后改为实际检查
-        speech_recognition: false,
+        audio_capture: audio_ok,
+        speech_recognition: speech_ok,
     })
 }
 
@@ -84,6 +77,8 @@ async fn request_permissions() -> Result<(), String> {
 #[tauri::command]
 async fn set_language(state: State<'_, AppState>, language: String) -> Result<(), String> {
     log::info!("设置识别语言: {}", language);
+    
+    AudioBridge::set_language(&language);
     
     let mut current = state.current_language.lock()
         .map_err(|_| "无法获取状态锁")?;
@@ -122,24 +117,9 @@ async fn get_supported_languages() -> Result<Vec<(String, String)>, String> {
 async fn start_transcription(state: State<'_, AppState>) -> Result<(), String> {
     log::info!("开始转录");
     
-    {
-        let is_capturing = state.is_capturing.lock()
-            .map_err(|_| "无法获取状态锁")?;
-        if *is_capturing {
-            return Err("转录已在进行中".to_string());
-        }
-    }
-    
-    // 清空缓冲区
-    {
-        let mut buffer = state.transcription_buffer.lock()
-            .map_err(|_| "无法获取状态锁")?;
-        buffer.clear();
-    }
-    {
-        let mut latest = state.latest_transcription.lock()
-            .map_err(|_| "无法获取状态锁")?;
-        latest.clear();
+    // 检查是否已在捕获
+    if AudioBridge::is_capturing() {
+        return Err("转录已在进行中".to_string());
     }
     
     // 记录开始时间
@@ -149,15 +129,8 @@ async fn start_transcription(state: State<'_, AppState>) -> Result<(), String> {
         *start_time = Some(std::time::Instant::now());
     }
     
-    // 设置捕获状态
-    {
-        let mut is_capturing = state.is_capturing.lock()
-            .map_err(|_| "无法获取状态锁")?;
-        *is_capturing = true;
-    }
-    
-    // TODO: 在 Swift 库就绪后，启动实际的音频捕获和语音识别
-    // audio_bridge::AudioBridge::start_transcription()?;
+    // 启动音频捕获和语音识别
+    AudioBridge::start_transcription()?;
     
     Ok(())
 }
@@ -176,23 +149,11 @@ async fn stop_transcription(state: State<'_, AppState>) -> Result<TranscriptionS
             .unwrap_or(0);
     }
     
-    // 停止捕获
-    {
-        let mut is_capturing = state.is_capturing.lock()
-            .map_err(|_| "无法获取状态锁")?;
-        *is_capturing = false;
-    }
+    // 停止音频捕获
+    AudioBridge::stop_transcription();
     
-    // TODO: 在 Swift 库就绪后，停止实际的音频捕获和语音识别
-    // audio_bridge::AudioBridge::stop_transcription();
-    
-    let full_text = state.transcription_buffer.lock()
-        .map_err(|_| "无法获取状态锁")?
-        .clone();
-    
-    let latest_text = state.latest_transcription.lock()
-        .map_err(|_| "无法获取状态锁")?
-        .clone();
+    let full_text = AudioBridge::get_full_transcription();
+    let latest_text = AudioBridge::get_latest_transcription();
     
     Ok(TranscriptionStatus {
         is_capturing: false,
@@ -205,16 +166,10 @@ async fn stop_transcription(state: State<'_, AppState>) -> Result<TranscriptionS
 /// 获取转录状态
 #[tauri::command]
 async fn get_transcription_status(state: State<'_, AppState>) -> Result<TranscriptionStatus, String> {
-    let is_capturing = *state.is_capturing.lock()
-        .map_err(|_| "无法获取状态锁")?;
+    let is_capturing = AudioBridge::is_capturing();
     
-    let latest_text = state.latest_transcription.lock()
-        .map_err(|_| "无法获取状态锁")?
-        .clone();
-    
-    let full_text = state.transcription_buffer.lock()
-        .map_err(|_| "无法获取状态锁")?
-        .clone();
+    let latest_text = AudioBridge::get_latest_transcription();
+    let full_text = AudioBridge::get_full_transcription();
     
     let duration_seconds = state.capture_start_time.lock()
         .map_err(|_| "无法获取状态锁")?
@@ -289,32 +244,14 @@ async fn export_transcript(
     storage.export_transcript(id, &format)
 }
 
-/// 模拟接收转录文本（用于演示）
+/// 模拟接收转录文本（用于演示和测试）
 #[tauri::command]
-async fn simulate_transcription(state: State<'_, AppState>, text: String) -> Result<(), String> {
-    let is_capturing = *state.is_capturing.lock()
-        .map_err(|_| "无法获取状态锁")?;
-    
-    if !is_capturing {
+async fn simulate_transcription(text: String) -> Result<(), String> {
+    if !AudioBridge::is_capturing() {
         return Err("转录未在进行中".to_string());
     }
     
-    // 更新最新文本
-    {
-        let mut latest = state.latest_transcription.lock()
-            .map_err(|_| "无法获取状态锁")?;
-        *latest = text.clone();
-    }
-    
-    // 追加到缓冲区
-    {
-        let mut buffer = state.transcription_buffer.lock()
-            .map_err(|_| "无法获取状态锁")?;
-        if !buffer.is_empty() {
-            buffer.push_str("\n");
-        }
-        buffer.push_str(&text);
-    }
+    AudioBridge::simulate_text(&text);
     
     Ok(())
 }
@@ -334,6 +271,9 @@ pub fn run() {
                 )?;
             }
             
+            // 初始化音频桥接
+            AudioBridge::init();
+            
             // 初始化存储
             let storage = StorageManager::new(app.handle())
                 .map_err(|e| format!("初始化存储失败: {}", e))?;
@@ -344,6 +284,13 @@ pub fn run() {
             *storage_lock = Some(storage);
             
             log::info!("Mac Voice to Text 应用已启动");
+            
+            // 打印模式信息
+            #[cfg(feature = "swift_audio")]
+            log::info!("运行模式: Swift 音频捕获");
+            #[cfg(not(feature = "swift_audio"))]
+            log::info!("运行模式: 模拟模式（Swift 库未链接）");
+            
             Ok(())
         })
         .manage(AppState::default())
