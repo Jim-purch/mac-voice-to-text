@@ -1,7 +1,8 @@
 // HistoryPanel.tsx
 // 历史记录侧边栏组件
 
-import { TranscriptRecord, formatDuration } from '../hooks/useTranscription';
+import { formatDuration } from '../hooks/useTranscription';
+import type { TranscriptRecord } from '../hooks/useTranscription';
 
 // 删除图标
 function TrashIcon() {

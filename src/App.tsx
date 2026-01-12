@@ -13,8 +13,8 @@ import {
   usePermissions,
   useLanguage,
   useTranscriptHistory,
-  TranscriptRecord,
 } from './hooks/useTranscription';
+import type { TranscriptRecord } from './hooks/useTranscription';
 
 // 设置图标
 function SettingsIcon() {

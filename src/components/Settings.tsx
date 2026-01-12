@@ -1,7 +1,7 @@
 // Settings.tsx
 // 设置面板组件
 
-import { LanguageOption } from '../hooks/useTranscription';
+import type { LanguageOption } from '../hooks/useTranscription';
 
 // 关闭图标
 function CloseIcon() {

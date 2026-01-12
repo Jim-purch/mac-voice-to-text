@@ -1,6 +1,6 @@
 // build.rs
 // Tauri 构建脚本
-// 负责链接 Swift 原生库
+// 负责链接 Swift 原生库和运行时
 
 use std::env;
 use std::path::PathBuf;
@@ -12,11 +12,10 @@ fn main() {
     
     // 获取项目根目录
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let swift_plugin_dir = PathBuf::from(&manifest_dir).join("../swift-plugin");
     let libs_dir = PathBuf::from(&manifest_dir).join("libs");
     
-    // 检查是否在 macOS 上
-    #[cfg(target_os = "macos")]
+    // 检查是否在 macOS 上并且启用了 swift_audio 特性
+    #[cfg(all(target_os = "macos", feature = "swift_audio"))]
     {
         // 检查 Swift 库是否存在
         let lib_path = libs_dir.join("libAudioCapture.a");
@@ -36,7 +35,7 @@ fn main() {
                         println!("cargo:warning=Swift 库编译成功");
                     }
                     _ => {
-                        println!("cargo:warning=Swift 库编译失败，将使用模拟模式运行");
+                        println!("cargo:warning=Swift 库编译失败");
                         return;
                     }
                 }
@@ -61,8 +60,33 @@ fn main() {
             println!("cargo:rustc-link-lib=framework=CoreMedia");
             println!("cargo:rustc-link-lib=framework=Foundation");
             
-            // 启用 Swift 库特性
-            println!("cargo:rustc-cfg=feature=\"swift_audio\"");
+            // 获取 Xcode 路径来找到 Swift 运行时
+            if let Ok(output) = Command::new("xcode-select").arg("-p").output() {
+                if output.status.success() {
+                    let xcode_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    
+                    // Swift 运行时库路径
+                    let swift_lib_paths = vec![
+                        format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx", xcode_path),
+                        format!("{}/usr/lib/swift/macosx", xcode_path),
+                        "/usr/lib/swift".to_string(),
+                    ];
+                    
+                    for path in &swift_lib_paths {
+                        let path_buf = PathBuf::from(path);
+                        if path_buf.exists() {
+                            println!("cargo:rustc-link-search=native={}", path);
+                            // 添加 rpath 以便运行时能找到库
+                            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", path);
+                        }
+                    }
+                    
+                    // 链接 Swift 运行时库
+                    println!("cargo:rustc-link-lib=dylib=swiftCore");
+                    println!("cargo:rustc-link-lib=dylib=swift_Concurrency");
+                    println!("cargo:rustc-link-lib=dylib=swiftFoundation");
+                }
+            }
         }
     }
     
