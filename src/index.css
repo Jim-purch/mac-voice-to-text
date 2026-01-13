@@ -7,50 +7,50 @@
   --color-primary: #6366f1;
   --color-primary-light: #818cf8;
   --color-primary-dark: #4f46e5;
-  
+
   /* 背景色 */
   --color-bg-base: #0f0f0f;
   --color-bg-elevated: #1a1a1a;
   --color-bg-surface: #242424;
   --color-bg-hover: #2d2d2d;
-  
+
   /* 文字色 */
   --color-text-primary: #fafafa;
   --color-text-secondary: #a1a1aa;
   --color-text-muted: #71717a;
-  
+
   /* 状态色 */
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
-  
+
   /* 边框色 */
   --color-border: #2e2e2e;
   --color-border-light: #3f3f3f;
-  
+
   /* 间距 */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
-  
+
   /* 圆角 */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-full: 9999px;
-  
+
   /* 动画 */
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 400ms ease;
-  
+
   /* 阴影 */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
-  
+
   /* 毛玻璃效果 */
   --glass-bg: rgba(30, 30, 30, 0.85);
   --glass-border: rgba(255, 255, 255, 0.1);
@@ -63,7 +63,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
@@ -130,8 +131,19 @@ html, body {
 
 .header-actions {
   display: flex;
+  align-items: center;
   gap: var(--spacing-sm);
   -webkit-app-region: no-drag;
+}
+
+.demo-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-warning);
+  background: rgba(245, 158, 11, 0.15);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 /* ===== 主内容区域 ===== */
@@ -187,11 +199,41 @@ html, body {
   border-bottom: 1px solid var(--color-border);
 }
 
+.transcription-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.transcription-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.copy-btn {
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.copy-btn:hover {
+  color: var(--color-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.copy-btn.copied {
+  color: var(--color-success);
+}
+
 .transcription-content {
   flex: 1;
   padding: var(--spacing-lg);
   overflow-y: auto;
   background: linear-gradient(180deg, var(--color-bg-base), var(--color-bg-elevated));
+}
+
+.transcription-text-container {
+  min-height: 100%;
 }
 
 .transcription-text {
@@ -200,6 +242,7 @@ html, body {
   color: var(--color-text-primary);
   white-space: pre-wrap;
   word-break: break-word;
+  user-select: text;
 }
 
 .transcription-text.empty {
@@ -219,8 +262,16 @@ html, body {
 }
 
 @keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+
+  0%,
+  50% {
+    opacity: 1;
+  }
+
+  51%,
+  100% {
+    opacity: 0;
+  }
 }
 
 /* ===== 控制栏 ===== */
@@ -265,9 +316,12 @@ html, body {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
   }
+
   50% {
     box-shadow: 0 4px 40px rgba(239, 68, 68, 0.6);
   }
@@ -405,6 +459,7 @@ html, body {
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
@@ -472,7 +527,8 @@ html, body {
 }
 
 /* ===== 表单元素 ===== */
-select, input {
+select,
+input {
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: 14px;
@@ -484,7 +540,8 @@ select, input {
   transition: border-color var(--transition-fast);
 }
 
-select:focus, input:focus {
+select:focus,
+input:focus {
   border-color: var(--color-primary);
 }
 
@@ -498,6 +555,88 @@ select {
 }
 
 /* ===== 权限提示 ===== */
+.permission-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.permission-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.permission-item.granted {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.permission-item.denied {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.permission-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.permission-item.granted .permission-icon {
+  color: var(--color-success);
+}
+
+.permission-item.denied .permission-icon {
+  color: var(--color-error);
+}
+
+.permission-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.permission-status {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.permission-item.granted .permission-status {
+  color: var(--color-success);
+}
+
+.permission-item.denied .permission-status {
+  color: var(--color-error);
+}
+
+.permission-message {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+.permission-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.permission-actions .btn {
+  flex: 1;
+}
+
 .permission-alert {
   display: flex;
   align-items: flex-start;
@@ -506,7 +645,8 @@ select {
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.3);
   border-radius: var(--radius-md);
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+  margin-top: var(--spacing-md);
 }
 
 .permission-alert-icon {
@@ -557,8 +697,15 @@ select {
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .status-text {
@@ -627,7 +774,7 @@ select {
   .sidebar {
     display: none;
   }
-  
+
   .settings-panel {
     width: 100%;
   }
@@ -644,7 +791,9 @@ select {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ===== 毛玻璃遮罩 ===== */

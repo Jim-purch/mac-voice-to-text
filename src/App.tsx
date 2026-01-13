@@ -1,7 +1,7 @@
 // App.tsx
 // Mac Voice to Text 主应用组件
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import './index.css';
 
 import { ControlBar } from './components/ControlBar';
@@ -26,12 +26,25 @@ function SettingsIcon() {
   );
 }
 
+// 模拟转录文本（用于测试）
+const DEMO_TEXTS = [
+  "这是一段测试语音转文字的内容。",
+  "Mac Voice to Text 应用正在运行。",
+  "您可以使用这个应用来捕获系统音频并转换为文字。",
+  "转录结果会实时显示在屏幕上。",
+  "所有内容都会自动保存到历史记录中。",
+];
+
 function App() {
   // 设置面板状态
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 选中的历史记录
   const [selectedRecord, setSelectedRecord] = useState<TranscriptRecord | null>(null);
+
+  // 模拟模式定时器
+  const simulateRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const demoIndexRef = useRef(0);
 
   // 使用 Hooks
   const transcription = useTranscription();
@@ -44,21 +57,53 @@ function App() {
     // 清除选中的历史记录，显示实时转录
     setSelectedRecord(null);
     await transcription.startTranscription();
-  }, [transcription]);
+
+    // 如果没有权限（模拟模式），启动模拟转录
+    if (!permissions.hasAllPermissions) {
+      demoIndexRef.current = 0;
+      simulateRef.current = setInterval(() => {
+        const text = DEMO_TEXTS[demoIndexRef.current % DEMO_TEXTS.length];
+        transcription.simulateTranscription(text);
+        demoIndexRef.current++;
+      }, 2000);
+    }
+  }, [transcription, permissions.hasAllPermissions]);
 
   // 处理停止转录
   const handleStop = useCallback(async () => {
+    // 停止模拟
+    if (simulateRef.current) {
+      clearInterval(simulateRef.current);
+      simulateRef.current = null;
+    }
+
     const result = await transcription.stopTranscription();
 
+    // 获取需要保存的文本：优先使用返回结果，其次使用 getCurrentText
+    const textToSave = result?.full_text || transcription.getCurrentText();
+    const duration = result?.duration_seconds ?? transcription.duration;
+
     // 如果有内容，自动保存
-    if (result && result.full_text) {
+    if (textToSave && textToSave.trim()) {
       try {
-        await history.saveRecord(result.full_text, result.duration_seconds);
+        await history.saveRecord(textToSave, duration);
+        console.log('转录已保存');
       } catch (e) {
         console.error('自动保存失败:', e);
       }
+    } else {
+      console.log('没有转录内容需要保存');
     }
   }, [transcription, history]);
+
+  // 清理模拟定时器
+  useEffect(() => {
+    return () => {
+      if (simulateRef.current) {
+        clearInterval(simulateRef.current);
+      }
+    };
+  }, []);
 
   // 处理选择历史记录
   const handleSelectRecord = useCallback((record: TranscriptRecord) => {
@@ -99,6 +144,11 @@ function App() {
       <header className="header">
         <h1>🎙️ Mac Voice to Text</h1>
         <div className="header-actions">
+          {!permissions.hasAllPermissions && (
+            <span className="demo-badge" title="当前为模拟模式，点击设置授予权限">
+              模拟模式
+            </span>
+          )}
           <button
             className="btn btn-ghost btn-icon"
             onClick={() => setSettingsOpen(true)}
@@ -146,7 +196,10 @@ function App() {
         languages={language.languages}
         onLanguageChange={language.setLanguage}
         hasAllPermissions={permissions.hasAllPermissions || false}
+        permissions={permissions.permissions}
         onRequestPermissions={permissions.requestPermissions}
+        onCheckPermissions={permissions.checkPermissions}
+        isCheckingPermissions={permissions.isLoading}
       />
     </div>
   );

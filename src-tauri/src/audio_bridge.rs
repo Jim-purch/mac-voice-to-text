@@ -81,18 +81,22 @@ extern "C" fn on_transcription(text: *const c_char, is_final: bool) {
         }
     };
     
-    // 更新最新转录
+    // 更新最新转录（实时显示用）
     if let Ok(mut latest) = LATEST_TRANSCRIPTION.lock() {
         *latest = text_str.clone();
     }
     
-    // 如果是最终结果，追加到缓冲区
+    // 如果是最终结果，追加到缓冲区并清空最新转录
     if is_final {
         if let Ok(mut buffer) = TRANSCRIPTION_BUFFER.lock() {
             if !buffer.is_empty() {
                 buffer.push('\n');
             }
             buffer.push_str(&text_str);
+        }
+        // 最终结果已追加，清空 latest 避免重复
+        if let Ok(mut latest) = LATEST_TRANSCRIPTION.lock() {
+            latest.clear();
         }
     }
     

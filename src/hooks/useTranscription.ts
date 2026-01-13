@@ -68,10 +68,14 @@ export function useTranscription() {
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // 用于存储的累积文本（包含所有已确认的转录）
+  const [accumulatedText, setAccumulatedText] = useState('');
 
   // 计时器
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 保存上一次的 fullText，用于检测变化
+  const prevFullTextRef = useRef('');
 
   // 开始转录
   const startTranscription = useCallback(async () => {
@@ -84,14 +88,16 @@ export function useTranscription() {
       setIsCapturing(true);
       setFullText('');
       setLatestText('');
+      setAccumulatedText('');
       setDuration(0);
+      prevFullTextRef.current = '';
 
       // 开始计时
       timerRef.current = setInterval(() => {
         setDuration(prev => prev + 1);
       }, 1000);
 
-      // 开始轮询状态（每 500ms）
+      // 开始轮询状态（每 300ms，更频繁以获取实时更新）
       pollRef.current = setInterval(async () => {
         try {
           const status = await safeInvoke<TranscriptionStatus>('get_transcription_status', undefined, {
@@ -100,12 +106,20 @@ export function useTranscription() {
             full_text: '',
             duration_seconds: 0,
           });
+
+          // 更新最新转录文本
           setLatestText(status.latest_text);
-          setFullText(status.full_text);
+
+          // 如果 full_text 有变化，说明有新的确认文本
+          if (status.full_text !== prevFullTextRef.current) {
+            setFullText(status.full_text);
+            setAccumulatedText(status.full_text);
+            prevFullTextRef.current = status.full_text;
+          }
         } catch (e) {
           console.error('轮询状态失败:', e);
         }
-      }, 500);
+      }, 300);
 
     } catch (e) {
       setError(String(e));
@@ -135,23 +149,56 @@ export function useTranscription() {
       const result = await safeInvoke<TranscriptionStatus>('stop_transcription', undefined, {
         is_capturing: false,
         latest_text: latestText,
-        full_text: fullText,
+        full_text: fullText || accumulatedText,
         duration_seconds: duration,
       });
 
       setIsCapturing(false);
-      setFullText(result.full_text);
-      setLatestText(result.latest_text);
 
-      return result;
+      // 合并最终文本：如果后端返回空，使用前端累积的文本
+      const finalFullText = result.full_text || accumulatedText || fullText;
+      const finalLatestText = result.latest_text || latestText;
+
+      // 如果有未确认的最新文本，追加到完整文本
+      let combinedText = finalFullText;
+      if (finalLatestText && !finalFullText.endsWith(finalLatestText)) {
+        combinedText = finalFullText ? `${finalFullText}\n${finalLatestText}` : finalLatestText;
+      }
+
+      setFullText(combinedText);
+      setLatestText('');
+      setAccumulatedText(combinedText);
+
+      return {
+        ...result,
+        full_text: combinedText,
+        duration_seconds: duration,
+      };
 
     } catch (e) {
       setError(String(e));
-      return null;
+      console.error('停止转录失败:', e);
+
+      // 即使出错，也返回前端累积的文本
+      return {
+        is_capturing: false,
+        latest_text: '',
+        full_text: accumulatedText || fullText,
+        duration_seconds: duration,
+      };
     } finally {
       setIsLoading(false);
     }
-  }, [latestText, fullText, duration]);
+  }, [latestText, fullText, duration, accumulatedText]);
+
+  // 获取当前累积的完整文本（用于外部获取）
+  const getCurrentText = useCallback(() => {
+    let text = accumulatedText || fullText;
+    if (latestText && !text.endsWith(latestText)) {
+      text = text ? `${text}\n${latestText}` : latestText;
+    }
+    return text;
+  }, [accumulatedText, fullText, latestText]);
 
   // 模拟转录（用于演示）
   const simulateTranscription = useCallback(async (text: string) => {
@@ -174,12 +221,14 @@ export function useTranscription() {
     isCapturing,
     latestText,
     fullText,
+    accumulatedText,
     duration,
     error,
     isLoading,
     startTranscription,
     stopTranscription,
     simulateTranscription,
+    getCurrentText,
     formattedDuration: formatDuration(duration),
   };
 }

@@ -149,15 +149,26 @@ async fn stop_transcription(state: State<'_, AppState>) -> Result<TranscriptionS
             .unwrap_or(0);
     }
     
+    // 先获取当前的转录内容（在停止之前）
+    let mut full_text = AudioBridge::get_full_transcription();
+    let latest_text = AudioBridge::get_latest_transcription();
+    
     // 停止音频捕获
     AudioBridge::stop_transcription();
     
-    let full_text = AudioBridge::get_full_transcription();
-    let latest_text = AudioBridge::get_latest_transcription();
+    // 如果有未确认的 latest_text，合并到 full_text
+    if !latest_text.is_empty() && !full_text.ends_with(&latest_text) {
+        if !full_text.is_empty() {
+            full_text.push('\n');
+        }
+        full_text.push_str(&latest_text);
+    }
+    
+    log::info!("转录停止，最终文本长度: {} 字符", full_text.len());
     
     Ok(TranscriptionStatus {
         is_capturing: false,
-        latest_text,
+        latest_text: String::new(), // 停止后清空
         full_text,
         duration_seconds,
     })

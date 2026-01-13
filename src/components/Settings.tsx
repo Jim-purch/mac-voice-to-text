@@ -1,7 +1,8 @@
 // Settings.tsx
 // 设置面板组件
 
-import type { LanguageOption } from '../hooks/useTranscription';
+import { useState } from 'react';
+import type { LanguageOption, PermissionStatus } from '../hooks/useTranscription';
 
 // 关闭图标
 function CloseIcon() {
@@ -21,6 +22,34 @@ function AlertIcon() {
     );
 }
 
+// 刷新图标
+function RefreshIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+        </svg>
+    );
+}
+
+// 勾选图标
+function CheckIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+            <polyline points="20,6 9,17 4,12" />
+        </svg>
+    );
+}
+
+// 叉号图标
+function XIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+            <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+    );
+}
+
 interface SettingsProps {
     isOpen: boolean;
     onClose: () => void;
@@ -28,7 +57,10 @@ interface SettingsProps {
     languages: LanguageOption[];
     onLanguageChange: (code: string) => void;
     hasAllPermissions: boolean;
+    permissions: PermissionStatus | null;
     onRequestPermissions: () => void;
+    onCheckPermissions: () => Promise<PermissionStatus>;
+    isCheckingPermissions: boolean;
 }
 
 export function Settings({
@@ -38,8 +70,26 @@ export function Settings({
     languages,
     onLanguageChange,
     hasAllPermissions,
+    permissions,
     onRequestPermissions,
+    onCheckPermissions,
+    isCheckingPermissions,
 }: SettingsProps) {
+    const [checkMessage, setCheckMessage] = useState<string | null>(null);
+
+    const handleCheckPermissions = async () => {
+        setCheckMessage(null);
+        const result = await onCheckPermissions();
+        if (result.audio_capture && result.speech_recognition) {
+            setCheckMessage('✅ 所有权限已获取，请重新启动应用以应用更改');
+        } else {
+            const missing = [];
+            if (!result.audio_capture) missing.push('屏幕录制');
+            if (!result.speech_recognition) missing.push('语音识别');
+            setCheckMessage(`❌ 仍缺少权限: ${missing.join(', ')}`);
+        }
+    };
+
     return (
         <>
             {/* 遮罩层 */}
@@ -58,25 +108,75 @@ export function Settings({
                 </div>
 
                 <div className="settings-content">
-                    {/* 权限提示 */}
-                    {!hasAllPermissions && (
-                        <div className="permission-alert">
-                            <AlertIcon />
-                            <div className="permission-alert-content">
-                                <div className="permission-alert-title">需要权限</div>
-                                <p className="permission-alert-text">
-                                    应用需要屏幕录制权限和语音识别权限才能正常工作。
-                                </p>
-                                <button
-                                    className="btn btn-primary"
-                                    style={{ marginTop: 12 }}
-                                    onClick={onRequestPermissions}
-                                >
-                                    打开系统设置
-                                </button>
+                    {/* 权限状态 */}
+                    <div className="settings-group">
+                        <div className="settings-group-title">权限状态</div>
+
+                        {/* 权限列表 */}
+                        <div className="permission-list">
+                            <div className={`permission-item ${permissions?.audio_capture ? 'granted' : 'denied'}`}>
+                                <span className="permission-icon">
+                                    {permissions?.audio_capture ? <CheckIcon /> : <XIcon />}
+                                </span>
+                                <span className="permission-name">屏幕录制权限</span>
+                                <span className="permission-status">
+                                    {permissions?.audio_capture ? '已授权' : '未授权'}
+                                </span>
+                            </div>
+                            <div className={`permission-item ${permissions?.speech_recognition ? 'granted' : 'denied'}`}>
+                                <span className="permission-icon">
+                                    {permissions?.speech_recognition ? <CheckIcon /> : <XIcon />}
+                                </span>
+                                <span className="permission-name">语音识别权限</span>
+                                <span className="permission-status">
+                                    {permissions?.speech_recognition ? '已授权' : '未授权'}
+                                </span>
                             </div>
                         </div>
-                    )}
+
+                        {/* 检测结果消息 */}
+                        {checkMessage && (
+                            <div className="permission-message">
+                                {checkMessage}
+                            </div>
+                        )}
+
+                        {/* 权限提示 */}
+                        {!hasAllPermissions && (
+                            <div className="permission-alert">
+                                <AlertIcon />
+                                <div className="permission-alert-content">
+                                    <div className="permission-alert-title">需要权限</div>
+                                    <p className="permission-alert-text">
+                                        应用需要屏幕录制权限和语音识别权限才能正常工作。
+                                        请在系统设置中授权后点击"重新检测"。
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 操作按钮 */}
+                        <div className="permission-actions">
+                            <button
+                                className="btn btn-secondary"
+                                onClick={handleCheckPermissions}
+                                disabled={isCheckingPermissions}
+                            >
+                                {isCheckingPermissions ? (
+                                    <div className="loading-spinner" style={{ width: 14, height: 14 }} />
+                                ) : (
+                                    <RefreshIcon />
+                                )}
+                                重新检测
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={onRequestPermissions}
+                            >
+                                打开系统设置
+                            </button>
+                        </div>
+                    </div>
 
                     {/* 语言设置 */}
                     <div className="settings-group">
