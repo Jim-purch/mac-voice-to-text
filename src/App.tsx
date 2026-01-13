@@ -26,6 +26,25 @@ function SettingsIcon() {
   );
 }
 
+// 录制图标
+function RecordTabIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="6" />
+    </svg>
+  );
+}
+
+// 历史图标
+function HistoryTabIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12,6 12,12 16,14" />
+    </svg>
+  );
+}
+
 // 模拟转录文本（用于测试）
 const DEMO_TEXTS = [
   "这是一段测试语音转文字的内容。",
@@ -35,11 +54,17 @@ const DEMO_TEXTS = [
   "所有内容都会自动保存到历史记录中。",
 ];
 
+// 标签页类型
+type TabType = 'record' | 'history';
+
 function App() {
+  // 当前标签页
+  const [activeTab, setActiveTab] = useState<TabType>('record');
+
   // 设置面板状态
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // 选中的历史记录
+  // 选中的历史记录（仅在历史标签页使用）
   const [selectedRecord, setSelectedRecord] = useState<TranscriptRecord | null>(null);
 
   // 模拟模式定时器
@@ -54,8 +79,8 @@ function App() {
 
   // 处理开始转录
   const handleStart = useCallback(async () => {
-    // 清除选中的历史记录，显示实时转录
-    setSelectedRecord(null);
+    // 自动切换到录制标签页
+    setActiveTab('record');
     await transcription.startTranscription();
 
     // 如果没有权限（模拟模式），启动模拟转录
@@ -83,11 +108,15 @@ function App() {
     const textToSave = result?.full_text || transcription.getCurrentText();
     const duration = result?.duration_seconds ?? transcription.duration;
 
+    console.log('停止转录，文本内容:', textToSave?.substring(0, 100), '长度:', textToSave?.length);
+
     // 如果有内容，自动保存
     if (textToSave && textToSave.trim()) {
       try {
         await history.saveRecord(textToSave, duration);
-        console.log('转录已保存');
+        console.log('转录已保存，时长:', duration);
+        // 刷新历史记录
+        await history.loadHistory();
       } catch (e) {
         console.error('自动保存失败:', e);
       }
@@ -133,10 +162,14 @@ function App() {
     }
   }, [history]);
 
-  // 显示的文本：选中历史记录时显示历史内容，否则显示实时转录
-  const displayText = selectedRecord
-    ? selectedRecord.content
-    : (transcription.fullText || transcription.latestText);
+  // 切换标签页
+  const handleTabChange = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+    // 切换到历史标签页时，刷新历史记录
+    if (tab === 'history') {
+      history.loadHistory();
+    }
+  }, [history]);
 
   return (
     <div className="app">
@@ -159,27 +192,70 @@ function App() {
         </div>
       </header>
 
-      {/* 主内容区域 */}
-      <div className="main-content">
-        {/* 历史记录侧边栏 */}
-        <HistoryPanel
-          records={history.records}
-          isLoading={history.isLoading}
-          selectedId={selectedRecord?.id ?? null}
-          onSelect={handleSelectRecord}
-          onDelete={handleDeleteRecord}
-          onExport={handleExportRecord}
-        />
-
-        {/* 转录面板 */}
-        <TranscriptionPanel
-          latestText={transcription.latestText}
-          fullText={displayText}
-          isCapturing={transcription.isCapturing && !selectedRecord}
-        />
+      {/* 标签页切换 */}
+      <div className="tabs-container">
+        <div className="tabs">
+          <button
+            className={`tab ${activeTab === 'record' ? 'active' : ''}`}
+            onClick={() => handleTabChange('record')}
+          >
+            <RecordTabIcon />
+            <span>录制</span>
+            {transcription.isCapturing && <span className="tab-badge recording" />}
+          </button>
+          <button
+            className={`tab ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => handleTabChange('history')}
+          >
+            <HistoryTabIcon />
+            <span>历史记录</span>
+            {history.records.length > 0 && (
+              <span className="tab-count">{history.records.length}</span>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* 控制栏 */}
+      {/* 主内容区域 */}
+      <div className="main-content">
+        {activeTab === 'record' ? (
+          /* 录制标签页 - 显示实时转录 */
+          <TranscriptionPanel
+            latestText={transcription.latestText}
+            fullText={transcription.fullText}
+            isCapturing={transcription.isCapturing}
+          />
+        ) : (
+          /* 历史标签页 - 显示历史记录列表和详情 */
+          <div className="history-tab-content">
+            <HistoryPanel
+              records={history.records}
+              isLoading={history.isLoading}
+              selectedId={selectedRecord?.id ?? null}
+              onSelect={handleSelectRecord}
+              onDelete={handleDeleteRecord}
+              onExport={handleExportRecord}
+            />
+            {selectedRecord ? (
+              <div className="history-detail">
+                <div className="history-detail-header">
+                  <h3>转录详情</h3>
+                  <span className="history-detail-date">{selectedRecord.created_at}</span>
+                </div>
+                <div className="history-detail-content">
+                  <p>{selectedRecord.content}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="history-detail-empty">
+                <p>选择左侧的历史记录查看详情</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 控制栏 - 始终显示 */}
       <ControlBar
         isCapturing={transcription.isCapturing}
         duration={transcription.duration}

@@ -136,11 +136,19 @@ public typealias TranscriptionResultCallback = @convention(c) (UnsafePointer<CCh
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         
+        // 启用标点符号（iOS 16+ / macOS 13+）
+        if #available(macOS 13.0, iOS 16.0, *) {
+            request.addsPunctuation = true
+        }
+        
         if request.requiresOnDeviceRecognition {
             print("[SpeechRecognizer] 使用端侧识别模式")
         } else {
             print("[SpeechRecognizer] 使用服务器识别模式")
         }
+        
+        // 用于跟踪上次发送的转录长度，避免重复发送
+        var lastSentLength = 0
         
         // 开始识别任务
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
@@ -158,16 +166,27 @@ public typealias TranscriptionResultCallback = @convention(c) (UnsafePointer<CCh
             }
             
             if let result = result {
-                let transcription = result.bestTranscription.formattedString
+                let fullTranscription = result.bestTranscription.formattedString
                 let isFinal = result.isFinal
                 
-                // 调用回调
-                transcription.withCString { cString in
-                    self.transcriptionCallback?(cString, isFinal)
-                }
-                
+                // 对于非最终结果，只发送变化的部分
+                // 对于最终结果，发送完整内容
                 if isFinal {
-                    print("[SpeechRecognizer] 最终结果: \(transcription)")
+                    // 最终结果：发送完整转录
+                    fullTranscription.withCString { cString in
+                        self.transcriptionCallback?(cString, true)
+                    }
+                    lastSentLength = fullTranscription.count
+                    print("[SpeechRecognizer] 最终结果: \(fullTranscription)")
+                } else {
+                    // 部分结果：发送完整的当前转录（让 Rust 层处理差异）
+                    // 只有内容有变化时才发送
+                    if fullTranscription.count != lastSentLength {
+                        fullTranscription.withCString { cString in
+                            self.transcriptionCallback?(cString, false)
+                        }
+                        lastSentLength = fullTranscription.count
+                    }
                 }
             }
         }

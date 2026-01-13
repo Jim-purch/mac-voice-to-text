@@ -48,8 +48,10 @@ static INIT: Once = Once::new();
 static IS_CAPTURING: AtomicBool = AtomicBool::new(false);
 
 lazy_static::lazy_static! {
-    static ref TRANSCRIPTION_BUFFER: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-    static ref LATEST_TRANSCRIPTION: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    // 存储所有已确认（isFinal=true）的转录文本
+    static ref CONFIRMED_BUFFER: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    // 存储当前正在进行的识别结果（完整的当前句子）
+    static ref CURRENT_TRANSCRIPTION: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     static ref ERROR_MESSAGE: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 }
 
@@ -69,6 +71,9 @@ extern "C" fn on_audio_sample(samples: *const c_float, count: c_int, _timestamp:
 extern "C" fn on_audio_sample(_samples: *const c_float, _count: c_int, _timestamp: f64) {}
 
 /// 转录结果回调
+/// 注意：SFSpeechRecognizer 每次回调返回的是从识别开始到现在的完整转录
+/// - 当 is_final = false 时：是正在进行的识别，可能会被更新
+/// - 当 is_final = true 时：当前识别段落已确认，不会再更改
 extern "C" fn on_transcription(text: *const c_char, is_final: bool) {
     if text.is_null() {
         return;
@@ -81,26 +86,28 @@ extern "C" fn on_transcription(text: *const c_char, is_final: bool) {
         }
     };
     
-    // 更新最新转录（实时显示用）
-    if let Ok(mut latest) = LATEST_TRANSCRIPTION.lock() {
-        *latest = text_str.clone();
-    }
-    
-    // 如果是最终结果，追加到缓冲区并清空最新转录
     if is_final {
-        if let Ok(mut buffer) = TRANSCRIPTION_BUFFER.lock() {
-            if !buffer.is_empty() {
-                buffer.push('\n');
+        // 最终结果：将此文本追加到已确认缓冲区
+        if let Ok(mut confirmed) = CONFIRMED_BUFFER.lock() {
+            if !text_str.is_empty() {
+                if !confirmed.is_empty() {
+                    confirmed.push_str("\n");
+                }
+                confirmed.push_str(&text_str);
             }
-            buffer.push_str(&text_str);
         }
-        // 最终结果已追加，清空 latest 避免重复
-        if let Ok(mut latest) = LATEST_TRANSCRIPTION.lock() {
-            latest.clear();
+        // 清空当前转录，因为已经被确认了
+        if let Ok(mut current) = CURRENT_TRANSCRIPTION.lock() {
+            current.clear();
         }
+        log::info!("转录(最终): {}", text_str);
+    } else {
+        // 部分结果：更新当前正在进行的转录
+        if let Ok(mut current) = CURRENT_TRANSCRIPTION.lock() {
+            *current = text_str.clone();
+        }
+        log::debug!("转录(部分): {}", text_str);
     }
-    
-    log::info!("转录{}: {}", if is_final { "(最终)" } else { "(部分)" }, text_str);
 }
 
 /// 错误回调
@@ -255,36 +262,34 @@ impl AudioBridge {
         log::info!("转录已停止 (模拟模式)");
     }
     
-    /// 获取最新的转录文本
+    /// 获取当前正在进行的转录文本（实时显示用）
     pub fn get_latest_transcription() -> String {
-        LATEST_TRANSCRIPTION.lock()
+        CURRENT_TRANSCRIPTION.lock()
             .map(|s| s.clone())
             .unwrap_or_default()
     }
     
-    /// 获取完整的转录缓冲区
+    /// 获取所有已确认的转录文本
     pub fn get_full_transcription() -> String {
-        TRANSCRIPTION_BUFFER.lock()
+        CONFIRMED_BUFFER.lock()
             .map(|s| s.clone())
             .unwrap_or_default()
     }
     
     /// 清空转录缓冲区
     pub fn clear_transcription() {
-        if let Ok(mut buffer) = TRANSCRIPTION_BUFFER.lock() {
+        if let Ok(mut buffer) = CONFIRMED_BUFFER.lock() {
             buffer.clear();
         }
-        if let Ok(mut latest) = LATEST_TRANSCRIPTION.lock() {
-            latest.clear();
+        if let Ok(mut current) = CURRENT_TRANSCRIPTION.lock() {
+            current.clear();
         }
     }
     
     /// 模拟追加文本（用于测试）
     pub fn simulate_text(text: &str) {
-        if let Ok(mut latest) = LATEST_TRANSCRIPTION.lock() {
-            *latest = text.to_string();
-        }
-        if let Ok(mut buffer) = TRANSCRIPTION_BUFFER.lock() {
+        // 模拟模式：直接追加到已确认缓冲区
+        if let Ok(mut buffer) = CONFIRMED_BUFFER.lock() {
             if !buffer.is_empty() {
                 buffer.push('\n');
             }
